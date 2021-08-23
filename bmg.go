@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"strings"
 )
 
 var (
@@ -66,10 +65,9 @@ type SectionHeader struct {
 
 // XMLFormat specifies XML necessities for marshalling and unmarshalling.
 type XMLFormat struct {
-	MessageID  MID
-	DATOffset  uint32
-	Attributes uint32
-	String     string
+	MessageID  MID `xml:"key,attr"`
+	Attributes uint32 `xml:"attributes,attr"`
+	String     string `xml:",innerxml"`
 }
 
 func (b BMG) ReadString(entry INFEntry) []rune {
@@ -138,23 +136,23 @@ func parseBMG(data []byte) ([]byte, error) {
 
 	var output []XMLFormat
 	for index, entry := range currentBMG.INF.Entries {
-		currentString := string(currentBMG.ReadString(entry))
-		currentString = strings.ReplaceAll(currentString, "\n", "\\n")
+		//currentString := string(currentBMG.ReadString(entry))
+		//currentString = strings.ReplaceAll(currentString, "\n", "\\n")
 
 		xmlNode := XMLFormat{
 			MessageID:  currentBMG.MID[index],
-			DATOffset:  entry.Offset,
 			Attributes: binary.BigEndian.Uint32(entry.Attributes[:]),
-			String:     currentString,
+			String:     string(currentBMG.ReadString(entry)),
 		}
 		output = append(output, xmlNode)
 	}
 
 	type Translations struct {
-		Translation []XMLFormat
+		XMLName xml.Name `xml:"root"`
+		Translation []XMLFormat `xml:"str"`
 	}
 
-	return xml.MarshalIndent(Translations{output}, "", "\t")
+	return xml.MarshalIndent(Translations{Translation: output}, "", "\t")
 }
 
 func createBMG(input []byte) ([]byte, error) {
