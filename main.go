@@ -1,20 +1,43 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
+	"log"
+	"os"
 )
 
 func main() {
-	data, err := ioutil.ReadFile("./message.bmg")
+	if len(os.Args) != 4 {
+		log.Println("Usage: bmgconv [toXML|toBMG] <input> <output>")
+		os.Exit(1)
+	}
+
+	action := os.Args[1]
+	input := os.Args[2]
+	output := os.Args[3]
+
+	inputData, err := ioutil.ReadFile(input)
 	if err != nil {
 		panic(err)
 	}
 
-	bmg, err := parseBMG(data)
+	var outputData []byte
+
+	switch action {
+	case "toXML":
+		outputData, err = parseBMG(inputData)
+		if err != nil {
+			panic(err)
+		}
+	case "toBMG":
+		outputData, err = createBMG(inputData)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	err = ioutil.WriteFile(output, outputData, 0600)
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(string(bmg))
 }

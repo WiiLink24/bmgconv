@@ -146,5 +146,14 @@ func parseBMG(data []byte) ([]byte, error) {
 		output = append(output, xmlNode)
 	}
 
-	return xml.MarshalIndent(output, "", "\t")
+	type Translations struct {
+		Translation []XMLFormat
+	}
+
+	return xml.MarshalIndent(Translations{output}, "", "\t")
+}
+
+
+func createBMG(input []byte) ([]byte, error) {
+	return nil, nil
 }
