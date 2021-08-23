@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 )
 
 var (
@@ -137,11 +138,14 @@ func parseBMG(data []byte) ([]byte, error) {
 
 	var output []XMLFormat
 	for index, entry := range currentBMG.INF.Entries {
+		currentString := string(currentBMG.ReadString(entry))
+		currentString = strings.ReplaceAll(currentString, "\n", "\\n")
+
 		xmlNode := XMLFormat{
 			MessageID:  currentBMG.MID[index],
 			DATOffset:  entry.Offset,
 			Attributes: binary.BigEndian.Uint32(entry.Attributes[:]),
-			String:     string(currentBMG.ReadString(entry)),
+			String:     currentString,
 		}
 		output = append(output, xmlNode)
 	}
@@ -152,7 +156,6 @@ func parseBMG(data []byte) ([]byte, error) {
 
 	return xml.MarshalIndent(Translations{output}, "", "\t")
 }
-
 
 func createBMG(input []byte) ([]byte, error) {
 	return nil, nil
