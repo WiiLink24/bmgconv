@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 )
 
 var (
@@ -30,7 +31,9 @@ const (
 )
 
 const (
-	NullStringPlaceholder = "==== THIS STRING INTENTIONALLY LEFT NULL ===="
+	NullStringPlaceholder  = "==== THIS STRING INTENTIONALLY LEFT NULL ===="
+	LessThanPlaceholder    = "##LESS_THAN_SYMBOL##"
+	GreaterThanPlaceholder = "##GREATER_THAN_SYMBOL##"
 )
 
 // BMG represents the internal structure of our BMG.
@@ -141,6 +144,8 @@ func parseBMG(data []byte) ([]byte, error) {
 	var output []XMLFormat
 	for index, entry := range currentBMG.INF.Entries {
 		currentString := string(currentBMG.ReadString(entry))
+		currentString = strings.ReplaceAll(currentString, "<", LessThanPlaceholder)
+		currentString = strings.ReplaceAll(currentString, ">", GreaterThanPlaceholder)
 
 		xmlNode := XMLFormat{
 			MessageID:  currentBMG.MID[index],
