@@ -29,6 +29,10 @@ const (
 	CharsetUTF8
 )
 
+const (
+	NullStringPlaceholder = "==== THIS STRING INTENTIONALLY LEFT NULL ===="
+)
+
 // BMG represents the internal structure of our BMG.
 type BMG struct {
 	INF *INF
@@ -65,7 +69,7 @@ type SectionHeader struct {
 
 // XMLFormat specifies XML necessities for marshalling and unmarshalling.
 type XMLFormat struct {
-	MessageID  MID `xml:"key,attr"`
+	MessageID  MID    `xml:"key,attr"`
 	Attributes uint32 `xml:"attributes,attr"`
 	String     string `xml:",innerxml"`
 }
@@ -136,19 +140,18 @@ func parseBMG(data []byte) ([]byte, error) {
 
 	var output []XMLFormat
 	for index, entry := range currentBMG.INF.Entries {
-		//currentString := string(currentBMG.ReadString(entry))
-		//currentString = strings.ReplaceAll(currentString, "\n", "\\n")
+		currentString := string(currentBMG.ReadString(entry))
 
 		xmlNode := XMLFormat{
 			MessageID:  currentBMG.MID[index],
 			Attributes: binary.BigEndian.Uint32(entry.Attributes[:]),
-			String:     string(currentBMG.ReadString(entry)),
+			String:     currentString,
 		}
 		output = append(output, xmlNode)
 	}
 
 	type Translations struct {
-		XMLName xml.Name `xml:"root"`
+		XMLName     xml.Name    `xml:"root"`
 		Translation []XMLFormat `xml:"str"`
 	}
 
