@@ -146,6 +146,9 @@ func parseBMG(data []byte) ([]byte, error) {
 		currentString := string(currentBMG.ReadString(entry))
 		currentString = strings.ReplaceAll(currentString, "<", LessThanPlaceholder)
 		currentString = strings.ReplaceAll(currentString, ">", GreaterThanPlaceholder)
+		if currentString == "" {
+			currentString = NullStringPlaceholder
+		}
 
 		xmlNode := XMLFormat{
 			MessageID:  currentBMG.MID[index],
