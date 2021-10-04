@@ -7,12 +7,14 @@ import (
 	"errors"
 	"io"
 	"log"
+	"os"
 	"strings"
+	"unicode/utf16"
 )
 
 var (
 	// FileMagic is the byte representation of "MESGbmg1".
-	FileMagic = []byte{'M', 'E', 'S', 'G', 'b', 'm', 'g', '1'}
+	FileMagic = [8]byte{'M', 'E', 'S', 'G', 'b', 'm', 'g', '1'}
 
 	ErrInvalidMagic        = errors.New("provided BMG has an invalid magic")
 	ErrUnsupportedEncoding = errors.New("provided BMG uses a text encoding not supported")
@@ -75,6 +77,11 @@ type XMLFormat struct {
 	MessageID  MID    `xml:"key,attr"`
 	Attributes uint32 `xml:"attributes,attr"`
 	String     string `xml:",innerxml"`
+}
+
+type Translations struct {
+	XMLName     xml.Name    `xml:"root"`
+	Translation []XMLFormat `xml:"str"`
 }
 
 func (b BMG) ReadString(entry INFEntry) []rune {
@@ -158,14 +165,137 @@ func parseBMG(data []byte) ([]byte, error) {
 		output = append(output, xmlNode)
 	}
 
-	type Translations struct {
-		XMLName     xml.Name    `xml:"root"`
-		Translation []XMLFormat `xml:"str"`
-	}
-
 	return xml.MarshalIndent(Translations{Translation: output}, "", "\t")
 }
 
+
 func createBMG(input []byte) ([]byte, error) {
+	var bmg Translations
+	err := xml.Unmarshal(input, &bmg)
+	if err != nil {
+		return nil, err
+	}
+
+	var utf16Strings []uint16
+	var mid []uint32
+	var offsets []uint32
+	var attributes []uint32
+	utf16Strings = append(utf16Strings, uint16(0))
+
+
+	for i, format := range bmg.Translation {
+		mid = append(mid, uint32(format.MessageID))
+
+		currentString := format.String
+
+		currentString = strings.ReplaceAll(currentString, LessThanPlaceholder, "<")
+		currentString = strings.ReplaceAll(currentString, GreaterThanPlaceholder, ">")
+
+		if currentString == NullStringPlaceholder {
+
+		} else {
+			utf16Strings = append(utf16Strings, utf16.Encode([]rune(currentString))...)
+			utf16Strings = append(utf16Strings, uint16(0))
+		}
+
+		if i == 0 {
+			// The first offset will always be 2
+			offsets = append(offsets, uint32(2))
+		}
+
+		offsets = append(offsets, uint32(len(utf16Strings)*2))
+
+		// Finally, append the attributes
+		attributes = append(attributes, format.Attributes)
+
+		// On the last index add 28 bytes of padding for the text.
+		if i == len(bmg.Translation) - 1 {
+			for i2 := 0; i2 < 14; i2++ {
+				utf16Strings = append(utf16Strings, uint16(0))
+			}
+		}
+	}
+
+	// Apply 4 bytes of padding to MID
+	mid = append(mid, uint32(0))
+
+	// Now that we have all our data, construct the INF block
+	var inf []uint32
+
+	for i, _ := range bmg.Translation {
+		inf = append(inf, offsets[i])
+		inf = append(inf, attributes[i])
+
+		// On the last index add 24 bytes of padding for the INF block
+		if i == len(bmg.Translation) - 1 {
+			for i2 := 0; i2 < 6; i2++ {
+				inf = append(inf, uint32(0))
+			}
+		}
+	}
+
+	// Add up the size of the headers and data to get filesize
+	filesize := uint32(56 + 16 + (len(utf16Strings) * 2) + (len(mid) * 4) + (len(inf) * 4))
+
+
+	// Write the BMG header
+	bmgHeader := BMGHeader{
+		Magic:        FileMagic,
+		FileSize:     filesize,
+		SectionCount: 3,
+		Charset:      CharsetUTF16,
+	}
+
+	infHeader := struct {
+		Magic	SectionTypes
+		Size	uint32
+		INFHeader INFHeader
+	}{
+		Magic: SectionTypeINF1,
+		Size: uint32(len(inf)*4+16),
+		INFHeader: INFHeader{
+			EntryCount:   uint16(len(mid)-1),
+			EntryLength:  8,
+			GroupID:      0,
+			DefaultColor: 0,
+		},
+	}
+
+	datHeader := struct {
+		Magic	SectionTypes
+		Size	uint32
+	}{
+		Magic: SectionTypeDAT1,
+		Size: uint32(len(utf16Strings) * 2),
+	}
+
+	midHeader := struct {
+		Magic	SectionTypes
+		Size	uint32
+		MIDHeader MIDHeader
+	}{
+		Magic: SectionTypeMID1,
+		Size: uint32(len(mid)*4+16),
+		MIDHeader: MIDHeader{
+			SectionCount: uint16(len(mid)-1),
+			Format:       uint8(10),
+			Info:         uint8(1),
+		},
+	}
+
+	create, err := os.Create("testing.bmg")
+	if err != nil {
+		return nil, err
+	}
+
+	// Now write all the parts of the BMG
+	binary.Write(create, binary.BigEndian, bmgHeader)
+	binary.Write(create, binary.BigEndian, infHeader)
+	binary.Write(create, binary.BigEndian, inf)
+	binary.Write(create, binary.BigEndian, datHeader)
+	binary.Write(create, binary.BigEndian, utf16Strings)
+	binary.Write(create, binary.BigEndian, midHeader)
+	binary.Write(create, binary.BigEndian, mid)
+
 	return nil, nil
 }
