@@ -168,26 +168,30 @@ func parseBMG(data []byte) ([]byte, error) {
 	return xml.MarshalIndent(Translations{Translation: output}, "", "\t")
 }
 
-
-func createBMG(input []byte) ([]byte, error) {
+func createBMG(input []byte, output string) error {
 	var bmg Translations
 	err := xml.Unmarshal(input, &bmg)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var utf16Strings []uint16
 	var mid []uint32
 	var offsets []uint32
 	var attributes []uint32
+
+	// Initial padding
 	utf16Strings = append(utf16Strings, uint16(0))
 
+	// The first offset will always be 2
+	offsets = append(offsets, uint32(2))
 
 	for i, format := range bmg.Translation {
+		// Append the message ID
 		mid = append(mid, uint32(format.MessageID))
 
+		// Now the strings
 		currentString := format.String
-
 		currentString = strings.ReplaceAll(currentString, LessThanPlaceholder, "<")
 		currentString = strings.ReplaceAll(currentString, GreaterThanPlaceholder, ">")
 
@@ -198,18 +202,13 @@ func createBMG(input []byte) ([]byte, error) {
 			utf16Strings = append(utf16Strings, uint16(0))
 		}
 
-		if i == 0 {
-			// The first offset will always be 2
-			offsets = append(offsets, uint32(2))
-		}
-
 		offsets = append(offsets, uint32(len(utf16Strings)*2))
 
 		// Finally, append the attributes
 		attributes = append(attributes, format.Attributes)
 
 		// On the last index add 28 bytes of padding for the text.
-		if i == len(bmg.Translation) - 1 {
+		if i == len(bmg.Translation)-1 {
 			for i2 := 0; i2 < 14; i2++ {
 				utf16Strings = append(utf16Strings, uint16(0))
 			}
@@ -221,13 +220,12 @@ func createBMG(input []byte) ([]byte, error) {
 
 	// Now that we have all our data, construct the INF block
 	var inf []uint32
-
 	for i, _ := range bmg.Translation {
 		inf = append(inf, offsets[i])
 		inf = append(inf, attributes[i])
 
 		// On the last index add 24 bytes of padding for the INF block
-		if i == len(bmg.Translation) - 1 {
+		if i == len(bmg.Translation)-1 {
 			for i2 := 0; i2 < 6; i2++ {
 				inf = append(inf, uint32(0))
 			}
@@ -235,10 +233,9 @@ func createBMG(input []byte) ([]byte, error) {
 	}
 
 	// Add up the size of the headers and data to get filesize
-	filesize := uint32(56 + 16 + (len(utf16Strings) * 2) + (len(mid) * 4) + (len(inf) * 4))
+	filesize := uint32(72 + (len(utf16Strings) * 2) + (len(mid) * 4) + (len(inf) * 4))
 
-
-	// Write the BMG header
+	// Create the BMG header
 	bmgHeader := BMGHeader{
 		Magic:        FileMagic,
 		FileSize:     filesize,
@@ -246,50 +243,57 @@ func createBMG(input []byte) ([]byte, error) {
 		Charset:      CharsetUTF16,
 	}
 
+	// Then INF header
 	infHeader := struct {
-		Magic	SectionTypes
-		Size	uint32
-		INFHeader INFHeader
+		SectionType SectionHeader
+		INFHeader   INFHeader
 	}{
-		Magic: SectionTypeINF1,
-		Size: uint32(len(inf)*4+16),
+		SectionType: SectionHeader{
+			Type: SectionTypeINF1,
+			Size: uint32(len(inf)*4 + 16),
+		},
 		INFHeader: INFHeader{
-			EntryCount:   uint16(len(mid)-1),
+			EntryCount:   uint16(len(mid) - 1),
 			EntryLength:  8,
 			GroupID:      0,
 			DefaultColor: 0,
 		},
 	}
 
-	datHeader := struct {
-		Magic	SectionTypes
-		Size	uint32
-	}{
-		Magic: SectionTypeDAT1,
-		Size: uint32(len(utf16Strings) * 2),
+	// DAT header
+	datHeader := SectionHeader{
+		Type: SectionTypeDAT1,
+		Size: uint32(len(utf16Strings)*2 + 8),
 	}
 
+	// Finally, MID header
 	midHeader := struct {
-		Magic	SectionTypes
-		Size	uint32
-		MIDHeader MIDHeader
+		SectionType SectionHeader
+		MIDHeader   MIDHeader
 	}{
-		Magic: SectionTypeMID1,
-		Size: uint32(len(mid)*4+16),
+		SectionType: SectionHeader{
+			Type: SectionTypeMID1,
+			Size: uint32(len(mid)*4 + 16),
+		},
 		MIDHeader: MIDHeader{
-			SectionCount: uint16(len(mid)-1),
+			SectionCount: uint16(len(mid) - 1),
 			Format:       uint8(10),
 			Info:         uint8(1),
 		},
 	}
 
-	create, err := os.Create("testing.bmg")
+	create, err := os.Create(output)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Now write all the parts of the BMG
-	binary.Write(create, binary.BigEndian, bmgHeader)
+	err = binary.Write(create, binary.BigEndian, bmgHeader)
+	if err != nil {
+		return err
+	}
+
+	// If it didn't error upon initial creation of file, we should be fine not handling errors for the rest
 	binary.Write(create, binary.BigEndian, infHeader)
 	binary.Write(create, binary.BigEndian, inf)
 	binary.Write(create, binary.BigEndian, datHeader)
@@ -297,5 +301,5 @@ func createBMG(input []byte) ([]byte, error) {
 	binary.Write(create, binary.BigEndian, midHeader)
 	binary.Write(create, binary.BigEndian, mid)
 
-	return nil, nil
+	return nil
 }

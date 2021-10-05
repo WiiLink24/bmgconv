@@ -29,15 +29,14 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-	case "toBMG":
-		outputData, err = createBMG(inputData)
+		err = ioutil.WriteFile(output, outputData, 0600)
 		if err != nil {
 			panic(err)
 		}
-	}
-
-	err = ioutil.WriteFile(output, outputData, 0600)
-	if err != nil {
-		panic(err)
+	case "toBMG":
+		err = createBMG(inputData, output)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
